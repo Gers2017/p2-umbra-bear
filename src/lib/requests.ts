@@ -1,0 +1,127 @@
+import { GraphQLClient, gql, RequestDocument } from "graphql-request";
+import {
+  encodeOperation,
+  generateHash,
+  KeyPair,
+  signAndEncodeEntry,
+} from "p2panda-js";
+
+import { ENDPOINT, CHAT_SCHEMA_ID } from "./constants";
+import type { Chat, Message, NextArgs } from "../typdefs";
+
+const gqlClient = new GraphQLClient(ENDPOINT);
+
+const LOCAL_STORAGE_KEY = "PRIVATE_KEY";
+const getPrivateKey = () => localStorage.getItem(LOCAL_STORAGE_KEY);
+const setPrivateKey = (privateKey: string) =>
+  localStorage.setItem(LOCAL_STORAGE_KEY, privateKey);
+
+function getKeyPair(): KeyPair {
+  const privateKey = getPrivateKey();
+  if (privateKey) {
+    return new KeyPair(privateKey);
+  }
+
+  const keyPair = new KeyPair();
+  setPrivateKey(keyPair.privateKey());
+  return keyPair;
+}
+
+export async function gqlRequest(query: RequestDocument, variables?: object) {
+  try {
+    return await gqlClient.request(query, variables);
+  } catch (e) {
+    console.error(e);
+
+    window.alert(
+      "Error: Could not connect to node.\n\n- Did you start the node at port `2020`?\n- Did you deploy the schemas (via `npm run schema`) and changed the schema ids in `./src/constants.ts`?"
+    );
+  }
+}
+
+async function nextArgs(publicKey: string, viewId?: string): Promise<NextArgs> {
+  const query = gql`
+    query NextArgs($publicKey: String!, $viewId: String) {
+      nextArgs(publicKey: $publicKey, viewId: $viewId) {
+        logId
+        seqNum
+        backlink
+        skiplink
+      }
+    }
+  `;
+
+  const result = await gqlRequest(query, {
+    publicKey,
+    viewId,
+  });
+
+  return result.nextArgs;
+}
+
+export async function publish(
+  entry: string,
+  operation: string
+): Promise<NextArgs> {
+  const query = gql`
+    mutation Publish($entry: String!, $operation: String!) {
+      publish(entry: $entry, operation: $operation) {
+        logId
+        seqNum
+        backlink
+        skiplink
+      }
+    }
+  `;
+
+  const result = await gqlRequest(query, {
+    entry,
+    operation,
+  });
+
+  return result.publish;
+}
+
+export async function createMessage(message: Message) {
+  const keyPair = getKeyPair();
+  const args = await nextArgs(keyPair.publicKey());
+
+  console.log({
+    pub: keyPair.publicKey(),
+    priv: keyPair.privateKey(),
+  });
+
+  const operation = encodeOperation({
+    action: "create",
+    schemaId: CHAT_SCHEMA_ID,
+    fields: message,
+  });
+
+  const entry = signAndEncodeEntry(
+    {
+      ...args,
+      operation,
+    },
+    keyPair
+  );
+
+  await publish(entry, operation);
+  return generateHash(entry);
+}
+
+export async function getAllChats() {
+  const query = gql`query AllChats {
+    chats: all_${CHAT_SCHEMA_ID} {
+      meta {
+        documentId
+        viewId
+      }
+      fields {
+        username
+        text
+      }
+    }
+  }`;
+  const res = (await gqlRequest(query)) as { chats: Chat[] };
+  return res.chats;
+}
