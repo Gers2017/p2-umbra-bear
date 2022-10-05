@@ -3,11 +3,18 @@ import {
   encodeOperation,
   generateHash,
   KeyPair,
+  OperationFields,
   signAndEncodeEntry,
 } from "p2panda-js";
 
-import { ENDPOINT, CHAT_SCHEMA_ID } from "./constants";
-import type { Chat, Message, NextArgs } from "../typdefs";
+import { ENDPOINT, CHAT_SCHEMA_ID, PICTURE_SCHEMA_ID } from "./constants";
+import type {
+  ChatResponse,
+  Message,
+  NextArgs,
+  Picture,
+  PictureResponse,
+} from "../typdefs";
 
 const gqlClient = new GraphQLClient(ENDPOINT);
 
@@ -109,6 +116,37 @@ export async function createMessage(message: Message) {
   return generateHash(entry);
 }
 
+export async function createPicture(picture: Picture) {
+  const keyPair = getKeyPair();
+  const args = await nextArgs(keyPair.publicKey());
+
+  const { blob, timestamp, messages } = picture;
+  const fields = new OperationFields({
+    blob,
+    timestamp,
+  });
+
+  fields.insert("messages", "relation_list", messages);
+
+  console.log("OP FIELDS:", fields);
+
+  const operation = encodeOperation({
+    schemaId: PICTURE_SCHEMA_ID,
+    fields,
+  });
+
+  const entry = signAndEncodeEntry(
+    {
+      ...args,
+      operation,
+    },
+    keyPair
+  );
+
+  await publish(entry, operation);
+  return generateHash(entry);
+}
+
 export async function getAllChats() {
   const query = gql`query AllChats {
     chats: all_${CHAT_SCHEMA_ID} {
@@ -122,6 +160,33 @@ export async function getAllChats() {
       }
     }
   }`;
-  const res = (await gqlRequest(query)) as { chats: Chat[] };
+  const res = (await gqlRequest(query)) as { chats: ChatResponse[] };
   return res.chats;
+}
+
+export async function getAllPictures() {
+  const query = gql`query AllPictures {
+    pictures: all_${PICTURE_SCHEMA_ID} {
+      meta {
+        documentId
+        viewId
+      }
+      fields {
+        blob
+        timestamp
+        messages {
+          meta {
+            documentId
+            viewId
+          }
+          fields {
+            username
+            text
+          }
+        }
+      }
+    }
+  }`;
+  const res = (await gqlRequest(query)) as { pictures: PictureResponse[] };
+  return res.pictures;
 }

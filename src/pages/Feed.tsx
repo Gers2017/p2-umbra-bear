@@ -1,7 +1,7 @@
-import React, { ChangeEvent, FormEvent, useState, useEffect } from "react";
-import { createMessage, getAllChats } from "../lib/requests";
-import { Chat, Message } from "../typdefs";
-import { ChatMessage } from "../components";
+import React, { ChangeEvent, FormEvent, useState } from "react";
+import { createMessage } from "../lib/requests";
+import { ChatResponse, Message } from "../typdefs";
+import { useChatFeed, ChatMessage } from "./chat";
 
 const DEFAULT_USERNAME = "Bob";
 
@@ -11,16 +11,7 @@ export const Feed: React.FC = () => {
     text: "",
   });
 
-  const [chatFeed, setChatFeed] = useState<Chat[]>([]);
-
-  async function fetchAndSetChatFeed() {
-    const chats = await getAllChats();
-    setChatFeed(chats);
-  }
-
-  useEffect(() => {
-    fetchAndSetChatFeed().catch((e) => console.error(e));
-  }, []);
+  const { chatFeed, setChatFeed, loading } = useChatFeed();
 
   const disabled =
     message.username.trim().length === 0 || message.text.trim().length === 0;
@@ -29,7 +20,7 @@ export const Feed: React.FC = () => {
     setMessage({ username: DEFAULT_USERNAME, text: "" });
   }
 
-  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleChange(e: ChangeEvent<HTMLInputElement>) {
     const { name, value } = e.target;
     setMessage((prev) => ({ ...prev, [name]: value }));
   }
@@ -40,7 +31,7 @@ export const Feed: React.FC = () => {
     try {
       const id = await createMessage(message);
 
-      const chat: Chat = {
+      const chat: ChatResponse = {
         meta: { documentId: id, viewId: id },
         fields: message,
       };
@@ -83,10 +74,13 @@ export const Feed: React.FC = () => {
       </form>
 
       <ul className="grid_list">
-        {chatFeed.length > 0 &&
+        {!loading ? (
           chatFeed.map((chat) => (
-            <ChatMessage key={chat.meta.documentId} chat={chat} />
-          ))}
+            <ChatMessage key={chat.meta.documentId} message={chat.fields} />
+          ))
+        ) : (
+          <h3>Please wait. Loading messages...</h3>
+        )}
       </ul>
     </>
   );

@@ -15,7 +15,23 @@ export type Message = {
   text: string;
 };
 
-export interface Chat {
+export interface ChatResponse {
   meta: Meta;
   fields: Message;
+}
+
+export interface Picture {
+  blob: string;
+  timestamp: string;
+  messages: string[];
+}
+
+type PictureOmittedMessage = Omit<Picture, "messages">;
+interface RelatedMessage extends PictureOmittedMessage {
+  messages: ChatResponse[];
+}
+
+export interface PictureResponse {
+  meta: Meta;
+  fields: RelatedMessage;
 }
